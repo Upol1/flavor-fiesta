@@ -1,5 +1,5 @@
 import axios from "axios";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API } from "../helpers/const";
 
@@ -11,7 +11,6 @@ const AuthContextProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
 
-  // Функция регистрации
   const handleRegister = async (formData) => {
     try {
       await axios.post(`${API}/user/register/`, formData);
@@ -21,14 +20,19 @@ const AuthContextProvider = ({ children }) => {
     }
   };
 
-  // Функция входа
   const handleLogin = async (formData, email) => {
     try {
       const { data } = await axios.post(`${API}/user/login/`, formData);
-      localStorage.setItem("tokens", JSON.stringify(data));
-      localStorage.setItem("email", JSON.stringify(email));
-      setCurrentUser(email);
-      navigate("/");
+      console.log("Токены после логина:", data);
+
+      if (data && data.access && data.refresh) {
+        localStorage.setItem("tokens", JSON.stringify(data));
+        localStorage.setItem("email", JSON.stringify(email));
+        setCurrentUser(email);
+        navigate("/");
+      } else {
+        throw new Error("Ошибка получения токенов");
+      }
     } catch (error) {
       console.error("Ошибка входа:", error);
     }
@@ -36,8 +40,15 @@ const AuthContextProvider = ({ children }) => {
 
   const checkAuth = async () => {
     try {
-      const tokens = JSON.parse(localStorage.getItem("tokens"));
-      console.log("Токены из localStorage:", tokens);
+      const tokensString = localStorage.getItem("tokens");
+      console.log("Токены из localStorage (строка):", tokensString);
+
+      if (!tokensString) {
+        throw new Error("Токены отсутствуют в localStorage");
+      }
+
+      const tokens = JSON.parse(tokensString);
+      console.log("Токены после парсинга:", tokens);
 
       if (!tokens || !tokens.refresh) {
         throw new Error("Токены отсутствуют или недействительны");
@@ -54,30 +65,36 @@ const AuthContextProvider = ({ children }) => {
         JSON.stringify({ access: data.access, refresh: tokens.refresh })
       );
 
-      const email = JSON.parse(localStorage.getItem("email"));
+      const emailString = localStorage.getItem("email");
+      if (!emailString) {
+        throw new Error("Email отсутствует в localStorage");
+      }
+
+      const email = JSON.parse(emailString);
       console.log("Текущий пользователь:", email);
       setCurrentUser(email);
     } catch (error) {
       console.error("Ошибка проверки аутентификации:", error);
+      handleLogOut(); // Очищаем данные при ошибке
     }
   };
 
-  // Вызов функции для проверки
-  checkAuth();
+  useEffect(() => {
+    console.log("Проверка аутентификации при загрузке");
+    checkAuth();
+  }, []);
 
-  // Функция выхода
   const handleLogOut = () => {
-    localStorage.clear("tokens");
-    localStorage.clear("email");
+    localStorage.removeItem("tokens");
+    localStorage.removeItem("email");
     setCurrentUser(null);
     navigate("/login");
   };
 
-  // Функция сброса пароля
   const handlePasswordReset = async (emailOrLogin) => {
     try {
       await axios.post(`${API}/user/forgot_password/`, { email: emailOrLogin });
-      console.log(`Requesting password reset for: ${emailOrLogin}`);
+      console.log(`Запрос на сброс пароля для: ${emailOrLogin}`);
     } catch (error) {
       console.error("Ошибка восстановления пароля:", error);
       throw new Error(
